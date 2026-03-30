@@ -1,146 +1,180 @@
-/* ── 1. DATE REVEAL ─────────────────────────────── */
-const revealScreen = document.getElementById('dateReveal');
-const mainEl       = document.getElementById('main');
-
-function dismissReveal() {
-  revealScreen.classList.add('dismiss');
-  mainEl.classList.add('visible');
-}
-
-revealScreen.addEventListener('click', dismissReveal);
-revealScreen.addEventListener('touchend', dismissReveal, { passive: true });
-// Auto-dismiss after 3.5s
-setTimeout(dismissReveal, 3500);
-
-
-/* ── 2. CURSOR ─────────────────────────────────── */
-const dot  = document.getElementById('cursor-dot');
-const ring = document.getElementById('cursor-ring');
-let mx = 0, my = 0, rx = 0, ry = 0;
+/* ═══════════════════════════════════════════
+   1. CUSTOM CURSOR
+═══════════════════════════════════════════ */
+const dot  = document.getElementById('cur-dot');
+const ring = document.getElementById('cur-ring');
+let mx = window.innerWidth / 2,
+    my = window.innerHeight / 2,
+    rx = mx, ry = my;
 
 document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
 
-(function tickCursor() {
-  dot.style.left  = mx + 'px';
-  dot.style.top   = my + 'px';
-  rx += (mx - rx) * 0.10;
-  ry += (my - ry) * 0.10;
+(function moveCursor() {
+  dot.style.left = mx + 'px';
+  dot.style.top  = my + 'px';
+  rx += (mx - rx) * 0.11;
+  ry += (my - ry) * 0.11;
   ring.style.left = rx + 'px';
   ring.style.top  = ry + 'px';
-  requestAnimationFrame(tickCursor);
+  requestAnimationFrame(moveCursor);
 })();
 
 
-/* ── 3. LIQUID GOLD SPARKLES ───────────────────── */
-const sc  = document.getElementById('sparkle-canvas');
-const sctx = sc.getContext('2d');
+/* ═══════════════════════════════════════════
+   2. GOLD DUST PARTICLES
+═══════════════════════════════════════════ */
+const cvs = document.getElementById('cvs');
+const ctx = cvs.getContext('2d');
+let W, H;
 
-sc.width  = window.innerWidth;
-sc.height = window.innerHeight;
-window.addEventListener('resize', () => {
-  sc.width  = window.innerWidth;
-  sc.height = window.innerHeight;
+function resize() {
+  W = cvs.width  = window.innerWidth;
+  H = cvs.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+/* Mouse / touch influence */
+let pointer = { x: W / 2, y: H / 2, active: false };
+document.addEventListener('mousemove', e => {
+  pointer.x = e.clientX; pointer.y = e.clientY; pointer.active = true;
 });
+document.addEventListener('touchmove', e => {
+  pointer.x = e.touches[0].clientX;
+  pointer.y = e.touches[0].clientY;
+  pointer.active = true;
+}, { passive: true });
+document.addEventListener('touchend', () => { pointer.active = false; });
 
-const GOLD_COLORS = [
-  'rgba(212,175,55,',
-  'rgba(240,208,96,',
-  'rgba(225,184,153,',
-  'rgba(238,217,138,',
+/* Palette */
+const PAL = [
+  [212, 175,  55],   // gold
+  [240, 208,  96],   // bright gold
+  [245, 237, 216],   // cream
+  [225, 184, 153],   // rose gold
 ];
 
-class Spark {
-  constructor(x, y) {
-    this.x  = x + (Math.random() - 0.5) * 16;
-    this.y  = y + (Math.random() - 0.5) * 16;
-    this.vx = (Math.random() - 0.5) * 1.2;
-    this.vy = (Math.random() - 0.5) * 1.2 - 0.4;
-    this.r  = Math.random() * 1.8 + 0.4;
-    this.alpha = 0.7 + Math.random() * 0.3;
-    this.decay  = 0.018 + Math.random() * 0.012;
-    this.color  = GOLD_COLORS[Math.floor(Math.random() * GOLD_COLORS.length)];
-    this.rotate = Math.random() * Math.PI * 2;
-    this.shape  = Math.random() > 0.6 ? 'diamond' : 'circle';
+class Dust {
+  constructor(fromPointer) {
+    this.reset(fromPointer);
   }
-  update() {
-    this.x     += this.vx;
-    this.y     += this.vy;
-    this.vy    += 0.015; // gravity
-    this.alpha -= this.decay;
-    this.rotate += 0.08;
-  }
-  draw(ctx) {
-    if (this.alpha <= 0) return;
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, this.alpha);
-    ctx.translate(this.x, this.y);
-    ctx.rotate(this.rotate);
-    ctx.fillStyle = this.color + this.alpha + ')';
-    if (this.shape === 'diamond') {
-      const s = this.r * 1.8;
-      ctx.beginPath();
-      ctx.moveTo(0, -s);
-      ctx.lineTo(s, 0);
-      ctx.lineTo(0, s);
-      ctx.lineTo(-s, 0);
-      ctx.closePath();
+  reset(fromPointer) {
+    if (fromPointer && pointer.active) {
+      this.x = pointer.x + (Math.random() - 0.5) * 40;
+      this.y = pointer.y + (Math.random() - 0.5) * 40;
     } else {
-      ctx.beginPath();
-      ctx.arc(0, 0, this.r, 0, Math.PI * 2);
+      this.x = Math.random() * W;
+      this.y = Math.random() * H;
     }
-    ctx.fill();
-    ctx.restore();
+    this.baseX  = this.x;
+    this.baseY  = this.y;
+    this.vx     = (Math.random() - 0.5) * 0.25;
+    this.vy     = -(Math.random() * 0.18 + 0.05);
+    this.r      = Math.random() * 1.4 + 0.3;
+    this.alpha  = 0;
+    this.maxAlpha = Math.random() * 0.55 + 0.15;
+    this.fadeIn = true;
+    this.life   = 0;
+    this.maxLife = Math.random() * 380 + 220;
+    this.col    = PAL[Math.floor(Math.random() * PAL.length)];
+    this.twinkle = Math.random() * Math.PI * 2;
   }
-  get dead() { return this.alpha <= 0; }
+
+  update() {
+    /* pointer pull */
+    if (pointer.active) {
+      const dx = pointer.x - this.x;
+      const dy = pointer.y - this.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < 120) {
+        const force = (120 - dist) / 120 * 0.008;
+        this.vx += dx * force;
+        this.vy += dy * force;
+      }
+    }
+
+    /* dampen */
+    this.vx *= 0.97;
+    this.vy *= 0.97;
+    this.x  += this.vx;
+    this.y  += this.vy;
+
+    /* twinkle alpha */
+    this.twinkle += 0.03;
+    const tw = (Math.sin(this.twinkle) + 1) * 0.5;
+
+    this.life++;
+    if (this.fadeIn) {
+      this.alpha += 0.006;
+      if (this.alpha >= this.maxAlpha) this.fadeIn = false;
+    } else {
+      this.alpha -= 0.0028;
+    }
+    this.drawAlpha = Math.max(0, this.alpha) * (0.6 + 0.4 * tw);
+
+    if (this.alpha <= 0 || this.life > this.maxLife ||
+        this.y < -10 || this.y > H + 10) {
+      this.reset(false);
+    }
+  }
+
+  draw() {
+    const [r, g, b] = this.col;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${r},${g},${b},${this.drawAlpha})`;
+    ctx.fill();
+  }
 }
 
-let sparks = [];
-let lastSpawnX = -999, lastSpawnY = -999;
-
-document.addEventListener('mousemove', e => {
-  const dx = e.clientX - lastSpawnX;
-  const dy = e.clientY - lastSpawnY;
-  if (dx*dx + dy*dy > 200) {
-    const count = 3 + Math.floor(Math.random() * 3);
-    for (let i = 0; i < count; i++) sparks.push(new Spark(e.clientX, e.clientY));
-    lastSpawnX = e.clientX; lastSpawnY = e.clientY;
-  }
+/* Init pool */
+const POOL = 110;
+const pool = Array.from({ length: POOL }, () => {
+  const p = new Dust(false);
+  p.life  = Math.random() * p.maxLife;
+  p.alpha = Math.random() * p.maxAlpha;
+  return p;
 });
 
-(function tickSparks() {
-  sctx.clearRect(0, 0, sc.width, sc.height);
-  sparks = sparks.filter(s => !s.dead);
-  sparks.forEach(s => { s.update(); s.draw(sctx); });
-  requestAnimationFrame(tickSparks);
-})();
-
-
-/* ── 4. PARALLAX ───────────────────────────────── */
-const parallaxEl = document.querySelector('[data-parallax]');
-let ticking = false;
-
-window.addEventListener('scroll', () => {
-  if (!ticking) {
-    requestAnimationFrame(() => {
-      const sy    = window.scrollY;
-      const speed = parseFloat(parallaxEl.dataset.parallax);
-      parallaxEl.style.transform = `translateY(${sy * speed}px)`;
-      ticking = false;
-    });
-    ticking = true;
-  }
+/* Pointer burst pool */
+const BURST_POOL = 30;
+const burst = Array.from({ length: BURST_POOL }, () => {
+  const p = new Dust(false);
+  p.alpha = 0; p.life = p.maxLife;
+  return p;
 });
 
-
-/* ── 5. INTERSECTION OBSERVER REVEALS ─────────── */
-const revealEls = document.querySelectorAll('.r');
-const io = new IntersectionObserver((entries) => {
-  entries.forEach(e => {
-    if (e.isIntersecting) {
-      e.target.classList.add('in');
-      io.unobserve(e.target);
+let lastBX = -999, lastBY = -999;
+function spawnBurst(x, y) {
+  const dx = x - lastBX, dy = y - lastBY;
+  if (dx*dx + dy*dy < 400) return;
+  lastBX = x; lastBY = y;
+  let spawned = 0;
+  for (const p of burst) {
+    if (p.alpha <= 0 && spawned < 4) {
+      p.x = x + (Math.random() - 0.5) * 20;
+      p.y = y + (Math.random() - 0.5) * 20;
+      p.vx = (Math.random() - 0.5) * 0.8;
+      p.vy = -(Math.random() * 0.6 + 0.2);
+      p.alpha = 0.6;
+      p.maxAlpha = 0.6;
+      p.fadeIn = false;
+      p.life = 0;
+      p.maxLife = 120;
+      p.r = Math.random() * 1.6 + 0.4;
+      spawned++;
     }
-  });
-}, { threshold: 0.12, rootMargin: '0px 0px -48px 0px' });
+  }
+}
 
-revealEls.forEach(el => io.observe(el));
+document.addEventListener('mousemove', e => spawnBurst(e.clientX, e.clientY));
+document.addEventListener('touchmove', e => {
+  spawnBurst(e.touches[0].clientX, e.touches[0].clientY);
+}, { passive: true });
+
+(function tick() {
+  ctx.clearRect(0, 0, W, H);
+  for (const p of pool)  { p.update(); p.draw(); }
+  for (const p of burst) { p.update(); p.draw(); }
+  requestAnimationFrame(tick);
+})();
